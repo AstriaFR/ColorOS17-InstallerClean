@@ -1,0 +1,10 @@
+/build/
+/references/
+/signing/
+/verification/
+__pycache__/
+*.jks
+*.keystore
+*.p12
+.env
+.env.*
