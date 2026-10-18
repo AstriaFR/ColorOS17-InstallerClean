@@ -31,7 +31,7 @@ public final class DeviceProbe {
             resolve.invoke(adapter, spec[1], spec[2], spec[3], Arrays.copyOfRange(spec, 4, spec.length));
         }
         for (String[] caller : (String[][]) field(rule, "deopt")) {
-            boolean found = false;
+            boolean found = caller[1].equals("<init>") && Class.forName(caller[0], false, loader).getDeclaredConstructors().length > 0;
             for (Method method : Class.forName(caller[0], false, loader).getDeclaredMethods()) {
                 if (method.getName().equals(caller[1])) found = true;
             }
@@ -74,7 +74,11 @@ public final class DeviceProbe {
         check(state.getClass().getName().equals(expectedState)); assertions++;
         Object preload = dispatch.invoke(adapter, "PRELOAD", chain);
         check(preload.getClass().getMethod("c").invoke(preload).getClass().getName().equals(expectedState)); assertions++;
-        Object parsed = dispatch.invoke(adapter, "PARSED", chain);
+        Object parsingChain = Proxy.newProxyInstance(loader, new Class<?>[]{chainType}, (proxy, method, values) -> {
+            if (method.getName().equals("proceed")) return null;
+            throw new AssertionError("Unexpected parsing chain operation: " + method.getName());
+        });
+        Object parsed = dispatch.invoke(adapter, "PARSED", parsingChain);
         check(parsed.getClass().getMethod("b").invoke(parsed).equals(false)); assertions++;
         // Its constructor reads application preferences; instantiate only in the real app process.
         check(((Constructor<?>) field(adapter, "fragment")).getDeclaringClass().getName().equals(expectedFragment)); assertions++;

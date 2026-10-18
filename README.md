@@ -6,6 +6,13 @@
 - 只需一次“安装”确认，完成后显示原生安装结果。
 - 同一模块根据安装器版本自动选择规则，桌面入口隐藏。
 
+## 本次修复
+
+- 权限摘要与详情使用同一份去重后的权限集合；无法识别或缺少说明的条目保留原始名称，不再漏项。有缺失信息时在原生页面中展示完整的未分类列表。
+- 解析后的32位兼容处理状态原样交还原厂，保留必要的兼容模式启用入口。
+
+本修复版通过22项本地回归检查和两版原厂DEX签名校验，未执行手机安装流程测试。模块显示版本仍为1.0。
+
 ## 实现原理
 
 模块使用 Vector 提供的现代 libxposed API 102，在安装器进程加载后拦截指定 Java 方法，调整页面状态和可选功能的调用。实现分为应用安装器前端和系统安装入口两部分，不需要重签或替换原厂 APK，也不修改 `system_server`。
@@ -29,7 +36,7 @@ flowchart TD
 
 ### 2. 跳过厂商扫描与失败提示
 
-`InstallerHook` 在预加载及引导配置入口提供本地的精简 `GuideResult`，关闭可选验证、扫描计时和提示配置，减少对远端引导结果的依赖。APK 的实际暂存、解析仍由原厂流程处理。
+`InstallerHook` 在预加载及引导配置入口提供本地的精简 `GuideResult`，关闭可选验证、扫描计时和提示配置，减少对远端引导结果的依赖。APK 的实际暂存、解析仍由原厂流程处理。解析后的分流先执行原厂方法；32位兼容相关状态原样保留，其他可选引导结果再进入精简流程。
 
 在 `RiskScanViewModel` 的扫描启动位置，模块不执行原扫描任务，而是向原生界面的状态观察者写入可继续渲染的完成态。随后将扫描内容区替换为权限摘要，并阻止无扫描失败卡片、重复提示及完成页附带提示的生成或显示。这个完成态用于页面流转，**不代表 APK 已通过安全检测**。
 
@@ -45,7 +52,7 @@ flowchart TD
 
 `PermissionPanel` 优先读取原厂解析结果中的 `ExtJumpParam.getAppRequirePermissions()`；缺少该字段时，通过 `PackageManager.getPackageArchiveInfo(..., GET_PERMISSIONS)` 从 APK 本地读取权限元数据。若无法读取，则隐藏权限区域，避免把未知数据显示为“0 项权限”。
 
-模块调用对应版本的原厂权限分类工具，生成权限总数和敏感权限数量，并复用原生视图展示。点击后，把本地权限数组传入原厂 `PermissionActivity`，按敏感权限、常规权限展示名称和用途说明。这个过程不启动风险扫描，也不申请或授予权限。
+模块调用对应版本的原厂权限分类工具，并以同一份去重后的本地权限集合生成数量和详情。点击后进入原厂 `PermissionActivity`，由模块生成完整的原生列表条目，避免原厂适配器过滤无法解析的权限。信息齐全时保留敏感权限、常规权限分组；有无法识别或缺少说明的条目时，显示未分类的完整列表，使用原始权限名称和中性说明兜底。这个过程不启动风险扫描，也不申请或授予权限。
 
 ### 5. 广告、更新与正常安装的边界
 
@@ -58,14 +65,17 @@ flowchart TD
 | [InstallerHook.java](src/java/cn/lzy/gt7p/installerclean/InstallerHook.java) | 前端钩子、扫描状态、原生按钮、推荐和提示处理 |
 | [NativeRouter.java](src/java/cn/lzy/gt7p/installerclean/NativeRouter.java) | 底层原生安装入口衔接 |
 | [PermissionPanel.java](src/java/cn/lzy/gt7p/installerclean/PermissionPanel.java) | 本地权限摘要及原生详情页 |
+| [PermissionCatalog.java](src/java/cn/lzy/gt7p/installerclean/PermissionCatalog.java) | 统一权限集合、完整性和缺失信息兜底 |
+| [PermissionDetails.java](src/java/cn/lzy/gt7p/installerclean/PermissionDetails.java) | 在原生详情适配器中保留全部权限 |
+| [ParsingPolicy.java](src/java/cn/lzy/gt7p/installerclean/ParsingPolicy.java) | 保留原厂32位兼容处理结果 |
 | [profile.json](profile.json) | 两版安装器的目标方法和依赖规则 |
 
 ## 支持版本
 
 | 应用安装器 | 验证情况 |
 | --- | --- |
-| 5.17.62_os17（51762） | 已完成实机安装验证 |
-| 5.23.0（52302） | 已通过静态检查和独立进程验证，未完成实机安装验证 |
+| 5.17.62_os17（51762） | 前版已实机验证；本修复版未做安装流程测试 |
+| 5.23.0（52302） | 静态检查通过；未完成实机安装验证 |
 
 底层安装器适配版本：`com.android.packageinstaller` 17.0.1（17000001）。其他版本保留原行为。
 
@@ -86,3 +96,9 @@ flowchart TD
 ```
 
 默认生成未签名 APK；签名参数见脚本。`profile.json` 保存版本规则，生成的 `Profile.java` 已包含在源码中。可选的 `verify_profile.py` 用于核对本地原厂 APK 并重新生成规则，需要 `requirements.txt` 中的依赖。原厂 APK 和签名私钥不随仓库分发。
+
+本地回归检查（不连接手机）：
+
+```powershell
+./tests/run-local.ps1 -Jdk /path/to/jdk
+```

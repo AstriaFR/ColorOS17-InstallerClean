@@ -238,6 +238,13 @@
           "void",
           "int",
           "java.lang.String"
+        ],
+        [
+          "PERMISSION_DETAILS",
+          "ke.a",
+          "d",
+          "java.util.List",
+          "com.oplus.appdetail.model.permission.ui.PermissionActivity"
         ]
       ],
       "deopt": [
@@ -288,6 +295,10 @@
         [
           "com.oplus.appdetail.model.install.util.InstallPageUIHelper",
           "s"
+        ],
+        [
+          "ke.a",
+          "<init>"
         ]
       ],
       "referenceApk": "references/appdetail-5.17.62_os17.apk",
@@ -415,6 +426,56 @@
           "setRadius",
           "void",
           "int"
+        ],
+        [
+          "le.a",
+          "<init>",
+          "void"
+        ],
+        [
+          "le.a",
+          "f",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "le.a",
+          "e",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "le.a",
+          "g",
+          "void",
+          "int"
+        ],
+        [
+          "le.b",
+          "<init>",
+          "void",
+          "int"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$a",
+          "<init>",
+          "void"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$e",
+          "<init>",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$f",
+          "<init>",
+          "void"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$i",
+          "<init>",
+          "void"
         ]
       ]
     },
@@ -652,6 +713,13 @@
           "void",
           "int",
           "java.lang.String"
+        ],
+        [
+          "PERMISSION_DETAILS",
+          "fe.a",
+          "d",
+          "java.util.List",
+          "com.oplus.appdetail.model.permission.ui.PermissionActivity"
         ]
       ],
       "deopt": [
@@ -702,6 +770,10 @@
         [
           "com.oplus.appdetail.model.install.util.InstallPageUIHelper",
           "u"
+        ],
+        [
+          "fe.a",
+          "<init>"
         ]
       ],
       "referenceApk": "references/appdetail-5.23.0.apk",
@@ -829,6 +901,56 @@
           "setRadius",
           "void",
           "int"
+        ],
+        [
+          "ge.a",
+          "<init>",
+          "void"
+        ],
+        [
+          "ge.a",
+          "f",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "ge.a",
+          "e",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "ge.a",
+          "g",
+          "void",
+          "int"
+        ],
+        [
+          "ge.b",
+          "<init>",
+          "void",
+          "int"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$a",
+          "<init>",
+          "void"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$e",
+          "<init>",
+          "void",
+          "java.lang.String"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$f",
+          "<init>",
+          "void"
+        ],
+        [
+          "com.oplus.appdetail.modelv2.parsing.b$i",
+          "<init>",
+          "void"
         ]
       ]
     }

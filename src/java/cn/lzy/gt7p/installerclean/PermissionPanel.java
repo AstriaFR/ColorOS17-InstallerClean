@@ -19,7 +19,7 @@ import java.util.List;
 final class PermissionPanel {
     private final Constructor<?> resultView;
     private final Class<?> details;
-    private final Method jumpParam, requiredPermissions, apkPath, classify, sensitive, normal,
+    private final Method jumpParam, requiredPermissions, apkPath, classify, sensitive,
             background, radius;
 
     PermissionPanel(ClassLoader loader, boolean old) throws Exception {
@@ -34,7 +34,6 @@ final class PermissionPanel {
         String util = old ? "ld.c" : "gd.c";
         classify = method(loader, util, "e", String[].class);
         sensitive = method(loader, util, "c");
-        normal = method(loader, util, "b");
         String card = "com.oplus.appdetail.base.view.RoundLinearLayout";
         background = method(loader, card, "setCardBackgroundColor", int.class);
         radius = method(loader, card, "setRadius", int.class);
@@ -74,10 +73,10 @@ final class PermissionPanel {
             if (info == null) { host.setVisibility(View.GONE); return; }
             permissions = info.requestedPermissions == null ? new String[0] : info.requestedPermissions;
         }
-        final String[] local = permissions.clone();
+        final String[] local = PermissionCatalog.normalize(permissions);
         call(classify, null, (Object) local);
-        String[] sensitiveNames = ((List<?>) call(sensitive, null)).toArray(new String[0]);
-        String[] normalNames = ((List<?>) call(normal, null)).toArray(new String[0]);
+        PermissionCatalog.Snapshot snapshot = PermissionDetails.catalog(context, local,
+                ((List<?>) call(sensitive, null)).toArray(new String[0]));
         Resources resources = host.getResources();
         View panel = (View) resultView.newInstance(context);
         TextView title = panel.findViewById(id(resources, "tv_result_title", "id"));
@@ -86,7 +85,7 @@ final class PermissionPanel {
         title.setTextColor(color(context, "couiColorLabelPrimary", title.getCurrentTextColor()));
         String count = resources.getString(id(resources, "text_normal_permission", "string"), local.length);
         String detail = resources.getString(id(resources, "sensitive_permission_detail_text", "string"));
-        if (sensitiveNames.length != 0) count += " · " + resources.getString(id(resources, "text_sensitive_permission", "string"), sensitiveNames.length);
+        if (snapshot.sensitive().length != 0) count += " · " + resources.getString(id(resources, "text_sensitive_permission", "string"), snapshot.sensitive().length);
         subtitle.setText(count + (local.length == 0 ? "" : " · " + detail));
         subtitle.setTextColor(color(context, "couiColorLabelSecondary", subtitle.getCurrentTextColor()));
         View divider = panel.findViewById(id(resources, "divider_line", "id"));
@@ -100,9 +99,10 @@ final class PermissionPanel {
             card.setOnClickListener(view -> {
                 Context target = view.getContext();
                 Intent intent = new Intent(target, details);
+                intent.putExtra(PermissionDetails.OWNED, true);
                 intent.putExtra("local_permission_data", local);
-                intent.putExtra("sensitive_permission_data", sensitiveNames);
-                intent.putExtra("normal_permission_data", normalNames);
+                intent.putExtra("sensitive_permission_data", snapshot.sensitive());
+                intent.putExtra("normal_permission_data", snapshot.normal());
                 if (!(target instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 target.startActivity(intent);
             });

@@ -46,7 +46,8 @@ final class Profile {
             {"NOOP", "com.oplus.appdetail.modelv2.guide.presenter.d", "f", "void", "boolean", "java.lang.String", "android.content.DialogInterface$OnDismissListener", "boolean"},
             {"NOOP", "com.oplus.appdetail.modelv2.guide.presenter.d", "g", "void", "boolean"},
             {"NOOP", "com.oplus.appdetail.modelv2.guide.helper.EnhanceUiBindHelper", "q", "void", "com.oplus.appdetail.modelv2.guide.view.GuideBottomView"},
-            {"FINISH_NOTE", "com.oplus.appdetail.model.install.view.ProcessSuccessLayout", "f", "void", "int", "java.lang.String"}
+            {"FINISH_NOTE", "com.oplus.appdetail.model.install.view.ProcessSuccessLayout", "f", "void", "int", "java.lang.String"},
+            {"PERMISSION_DETAILS", "ke.a", "d", "java.util.List", "com.oplus.appdetail.model.permission.ui.PermissionActivity"}
         }, new String[][] {
             {"com.oplus.appdetail.modelv2.parsing.ParsingViewModel", "n"},
             {"com.oplus.appdetail.model.guide.ui.InstallGuideActivity", "A0"},
@@ -59,7 +60,8 @@ final class Profile {
             {"com.oplus.appdetail.modelv2.guide.fragment.EnhanceGuardFragment", "J"},
             {"com.oplus.appdetail.modelv2.guide.fragment.EnhanceGuardFragment", "K"},
             {"com.oplus.appdetail.modelv2.guide.listener.InstallBtnClickPresenter$a", "a"},
-            {"com.oplus.appdetail.model.install.util.InstallPageUIHelper", "s"}
+            {"com.oplus.appdetail.model.install.util.InstallPageUIHelper", "s"},
+            {"ke.a", "<init>"}
         }),
         new Rule(52302L, "5.23.0", "yd.k", "yd.h", "com.oplus.appdetail.modelv2.guide.fragment.EnhanceGuardFragment", "x", "I", "H", new String[][] {
             {"PRELOAD", "com.oplus.appdetail.modelv2.parsing.reository.PreloadGuideRepository", "a", "java.lang.Object", "ld.a", "ld.c", "com.oplus.appdetail.modelv2.parsing.c", "kotlin.coroutines.c"},
@@ -92,7 +94,8 @@ final class Profile {
             {"NATIVE_INSTALL", "com.oplus.appdetail.modelv2.riskDialog.DialogHelper", "i", "boolean", "android.view.View", "com.oplus.appdetail.modelv2.guide.helper.i"},
             {"NOOP", "com.oplus.appdetail.modelv2.guide.viewmodel.RiskScanViewModel", "k", "void", "com.heytap.cdo.security.domain.safeguide.GuideResult", "java.lang.String"},
             {"NOOP", "com.oplus.appdetail.modelv2.guide.helper.EnhanceUiBindHelper", "t", "void", "com.oplus.appdetail.modelv2.guide.view.GuideBottomView"},
-            {"FINISH_NOTE", "com.oplus.appdetail.model.install.view.ProcessSuccessLayout", "f", "void", "int", "java.lang.String"}
+            {"FINISH_NOTE", "com.oplus.appdetail.model.install.view.ProcessSuccessLayout", "f", "void", "int", "java.lang.String"},
+            {"PERMISSION_DETAILS", "fe.a", "d", "java.util.List", "com.oplus.appdetail.model.permission.ui.PermissionActivity"}
         }, new String[][] {
             {"com.oplus.appdetail.modelv2.parsing.ParsingViewModel", "n"},
             {"com.oplus.appdetail.model.guide.ui.InstallGuideActivity", "E0"},
@@ -105,7 +108,8 @@ final class Profile {
             {"com.oplus.appdetail.modelv2.guide.fragment.EnhanceGuardFragment", "K"},
             {"com.oplus.appdetail.modelv2.guide.fragment.EnhanceGuardFragment", "L"},
             {"com.oplus.appdetail.modelv2.guide.listener.InstallBtnClickPresenter$a", "a"},
-            {"com.oplus.appdetail.model.install.util.InstallPageUIHelper", "u"}
+            {"com.oplus.appdetail.model.install.util.InstallPageUIHelper", "u"},
+            {"fe.a", "<init>"}
         })
     };
     static Rule select(long versionCode) {

@@ -5,6 +5,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import io.github.libxposed.api.XposedModule;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -45,9 +46,14 @@ public final class InstallerHook extends XposedModule {
             for (String[] spec : rule.hooks) {
                 targets.add(adapter.method(spec[1], spec[2], spec[3], Arrays.copyOfRange(spec, 4, spec.length)));
             }
-            List<Method> callers = new ArrayList<>();
+            List<Executable> callers = new ArrayList<>();
             for (String[] caller : rule.deopt) {
                 boolean found = false;
+                if (caller[1].equals("<init>")) {
+                    Constructor<?>[] constructors = adapter.type(caller[0]).getDeclaredConstructors();
+                    Collections.addAll(callers, constructors);
+                    found = constructors.length > 0;
+                }
                 for (Method method : adapter.type(caller[0]).getDeclaredMethods()) {
                     if (method.getName().equals(caller[1])) { callers.add(method); found = true; }
                 }
@@ -64,7 +70,7 @@ public final class InstallerHook extends XposedModule {
             }
             // Deopt exact callers so existing AOT inlining cannot silently bypass small hooks.
             for (Method target : targets) deoptimize(target);
-            for (Method caller : callers) deoptimize(caller);
+            for (Executable caller : callers) deoptimize(caller);
             active = true;
             report("ACTIVE appdetail=" + rule.versionName + " versionCode=" + code + " hooks=" + handles.size());
         } catch (Throwable failure) {
@@ -89,6 +95,7 @@ public final class InstallerHook extends XposedModule {
         private final Constructor<?> installButton;
         private final Object scanReady;
         private final PermissionPanel permissions;
+        private final PermissionDetails permissionDetails;
 
         Adapter(ClassLoader loader, Profile.Rule rule) throws Exception {
             this.loader = loader;
@@ -102,6 +109,7 @@ public final class InstallerHook extends XposedModule {
             fragment = constructor(rule.fragment); // Original full-page post-scan fragment.
             boolean old = rule.versionCode == 51762;
             permissions = new PermissionPanel(loader, old);
+            permissionDetails = new PermissionDetails(loader, old);
             String fetcher = "com.oplus.appdetail.modelv2.guide.helper." + (old ? "h" : "i");
             String bottomData = old ? "ue.c" : "pe.c";
             String presenter = "com.oplus.appdetail.modelv2.guide.presenter.GuideBottomViewPresenter";
@@ -193,7 +201,7 @@ public final class InstallerHook extends XposedModule {
             switch (action) {
                 // Suspend functions return final values directly. Never resume their continuation as well.
                 case "PRELOAD": return preload.newInstance(state.newInstance(localGuide()), null, "");
-                case "PARSED": return parsed.newInstance(false); // Reached only after real APK staging/parsing.
+                case "PARSED": return ParsingPolicy.choose(chain::proceed, () -> parsed.newInstance(false));
                 case "FRAGMENT": return fragment.newInstance();
                 case "STATE": return state.newInstance(localGuide());
                 case "GUIDE": return localGuide();
@@ -210,6 +218,10 @@ public final class InstallerHook extends XposedModule {
                 case "PERMISSIONS":
                     permissions.bind((ViewGroup) chain.getThisObject(), chain.getArg(1));
                     return null;
+                case "PERMISSION_DETAILS": {
+                    List<Object> rows = permissionDetails.rows((android.app.Activity) chain.getArg(0));
+                    return rows == null ? chain.proceed() : rows;
+                }
                 case "NATIVE_BOTTOM": {
                     View bottom = (View) chain.getArg(0);
                     Object original = call(nativeButton, chain.getThisObject(), true);
