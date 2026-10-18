@@ -8,13 +8,18 @@ final class ParsingPolicy {
         Object result = original.get();
         if (result != null) {
             switch (result.getClass().getName()) {
-                case "com.oplus.appdetail.modelv2.parsing.b$a":
-                case "com.oplus.appdetail.modelv2.parsing.b$e":
-                case "com.oplus.appdetail.modelv2.parsing.b$f":
-                case "com.oplus.appdetail.modelv2.parsing.b$i": return result;
-                default: break;
+                // Only known optional guide/version-prompt results may be simplified.
+                case "com.oplus.appdetail.modelv2.parsing.b$c":
+                case "com.oplus.appdetail.modelv2.parsing.b$d":
+                case "com.oplus.appdetail.modelv2.parsing.b$h":
+                case "com.oplus.appdetail.modelv2.parsing.b$j":
+                case "com.oplus.appdetail.modelv2.parsing.b$k":
+                case "com.oplus.appdetail.modelv2.parsing.b$l":
+                case "com.oplus.appdetail.modelv2.parsing.b$m":
+                case "com.oplus.appdetail.modelv2.parsing.b$n": return ordinary.get();
+                default: return result;
             }
         }
-        return ordinary.get();
+        return null;
     }
 }

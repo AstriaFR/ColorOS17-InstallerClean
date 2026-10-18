@@ -1,1 +1,1 @@
-<resources><string name="description">按应用安装器版本自动选择规则，支持 5.17.62_os17 和 5.23.0。简化为一次正常安装确认，移除安全检测失败提示、重复扫描、广告、自身更新和安全推广。</string></resources>
+<resources><string name="description">保留原生安装界面与三类权限详情，精简厂商扫描、重复确认、广告及更新提醒，按代码结构自动匹配可用功能。</string></resources>

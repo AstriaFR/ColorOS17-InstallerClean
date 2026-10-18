@@ -1,0 +1,1 @@
+package android.widget; public class TextView {public String text="";public void setText(CharSequence s){text=s.toString();}public android.content.res.Resources getResources(){return new android.content.res.Resources();}}

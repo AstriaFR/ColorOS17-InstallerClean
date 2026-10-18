@@ -1,6 +1,8 @@
 package cn.lzy.gt7p.installerclean;
 
 import android.util.Log;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import io.github.libxposed.api.XposedModule;
@@ -12,104 +14,197 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 
-/** Version-selected rules. No device, Android version, firmware, hash or split APK gates. */
+/** Structural feature probes; target versions are recorded only for diagnostics. */
 public final class InstallerHook extends XposedModule {
     private static final String TAG = "GT7PInstallerClean";
     private final List<HookHandle> handles = new ArrayList<>();
     private volatile boolean active;
     private boolean attempted;
+    private ReloadState.Target target;
+    private Handler statusHandler;
+    private Runnable pendingStatus;
 
     private void report(String message) {
-        log(Log.INFO, TAG, message);
-        Log.i(TAG, message);
+        String identified = BuildInfo.identity() + " " + message;
+        log(Log.WARN, TAG, identified);
+        Log.w(TAG, identified);
+    }
+
+    private void reportActive(String message) {
+        report(message);
+        // ColorOS drops the tail of large hook-registration log bursts. Repeat once after it.
+        Looper main = Looper.getMainLooper();
+        if (main == null) return;
+        statusHandler = new Handler(main);
+        pendingStatus = () -> { if (active) report(message + " CONFIRMED"); };
+        statusHandler.postDelayed(pendingStatus, 2500L);
+    }
+
+    @Override public void onModuleLoaded(ModuleLoadedParam param) {
+        report("LOADED process=" + param.getProcessName());
+    }
+
+    @Override public synchronized boolean onHotReloading(HotReloadingParam param) {
+        // A target that has not reached PackageReady must finish its normal cold initialization.
+        if (target == null) return false;
+        if (statusHandler != null && pendingStatus != null) statusHandler.removeCallbacks(pendingStatus);
+        param.setSavedInstanceState(ReloadState.save(target));
+        report("RELOAD_HANDOFF package=" + target.packageName());
+        return true;
+    }
+
+    @Override public synchronized void onHotReloaded(HotReloadedParam param) {
+        target = ReloadState.restore(param.getSavedInstanceState());
+        if (!Profile.PACKAGE.equals(target.packageName()) && !Profile.NATIVE_PACKAGE.equals(target.packageName())) {
+            throw new IllegalArgumentException("Unexpected reload target: " + target.packageName());
+        }
+        attempted = true;
+        // PackageReady is not replayed on hot reload. Resolve the saved host anew and reinstall.
+        initialize(target, param.getOldHookHandles());
+        if (!active) throw new IllegalStateException(BuildInfo.identity() + " reload did not activate rules");
+        report("RELOADED process=" + param.getProcessName());
+    }
+
+    private static void retire(List<HookHandle> oldHandles) {
+        for (HookHandle handle : oldHandles) handle.unhook();
     }
 
     @Override public synchronized void onPackageReady(PackageReadyParam param) {
         if (attempted || !param.isFirstPackage()) return;
-        if (Profile.NATIVE_PACKAGE.equals(param.getPackageName())) {
-            attempted = true;
-            try { NativeRouter.install(this, param.getClassLoader(), Compatibility.versionCode(param.getApplicationInfo())); }
-            catch (Throwable failure) { log(Log.ERROR, TAG, "DISABLED native router", failure); }
-            return;
-        }
-        if (!Profile.PACKAGE.equals(param.getPackageName())) return;
+        if (!Profile.NATIVE_PACKAGE.equals(param.getPackageName()) && !Profile.PACKAGE.equals(param.getPackageName())) return;
         attempted = true;
+        long observedVersion = 0;
+        try { observedVersion = Compatibility.versionCode(param.getApplicationInfo()); }
+        catch (ReflectiveOperationException unavailable) { report("INFO installer version unavailable; structural probing continues"); }
+        target = new ReloadState.Target(param.getPackageName(), param.getClassLoader(), observedVersion);
+        initialize(target, Collections.emptyList());
+    }
+
+    private void initialize(ReloadState.Target host, List<HookHandle> oldHandles) {
         try {
-            long code = Compatibility.versionCode(param.getApplicationInfo());
-            Profile.Rule rule = Profile.select(code);
-            if (rule == null) { report("UNSUPPORTED installer versionCode=" + code + "; original behavior retained"); return; }
-            Adapter adapter = new Adapter(param.getClassLoader(), rule);
-            List<Method> targets = new ArrayList<>();
-            // Resolve every method, return type and callback dependency before mutating anything.
-            for (String[] spec : rule.hooks) {
-                targets.add(adapter.method(spec[1], spec[2], spec[3], Arrays.copyOfRange(spec, 4, spec.length)));
+            if (Profile.NATIVE_PACKAGE.equals(host.packageName())) {
+                NativeRouter.Plan plan = NativeRouter.prepare(host.loader());
+                retire(oldHandles);
+                handles.add(NativeRouter.install(this, plan));
+                active = true;
+                reportActive("ACTIVE native observedVersion=" + host.version() + " selection=structure hooks=1");
+                return;
             }
-            List<Executable> callers = new ArrayList<>();
-            for (String[] caller : rule.deopt) {
-                boolean found = false;
-                if (caller[1].equals("<init>")) {
-                    Constructor<?>[] constructors = adapter.type(caller[0]).getDeclaredConstructors();
-                    Collections.addAll(callers, constructors);
-                    found = constructors.length > 0;
+            Map<Feature, StructuralProbe.Prepared> prepared = new EnumMap<>(Feature.class);
+            Map<Feature, Adapter> adapters = new EnumMap<>(Feature.class);
+            for (Feature feature : Feature.values()) {
+                StructuralProbe.Prepared flow = prepared.get(Feature.FLOW);
+                if (feature == Feature.PERMISSIONS && flow == null) {
+                    report("PROBE feature=PERMISSIONS SKIP dependency=FLOW");
+                    continue;
                 }
-                for (Method method : adapter.type(caller[0]).getDeclaredMethods()) {
-                    if (method.getName().equals(caller[1])) { callers.add(method); found = true; }
+                StructuralProbe.Decision decision = StructuralProbe.select(host.loader(), feature,
+                        feature == Feature.PERMISSIONS ? flow.rule() : null);
+                if (decision.selected() == null) {
+                    report("PROBE feature=" + feature + (decision.ambiguous() ? " AMBIGUOUS" : " NO_MATCH")
+                            + " reasons=" + decision.reasons());
+                    continue;
                 }
-                if (!found) throw new NoSuchMethodException(caller[0] + "#" + caller[1]);
+                StructuralProbe.Prepared candidate = decision.selected();
+                try {
+                    adapters.put(feature, new Adapter(host.loader(), candidate.rule(), feature));
+                    prepared.put(feature, candidate);
+                    report("PROBE feature=" + feature + " MATCH template=" + candidate.rule().id + " hooks=" + candidate.targets().size());
+                } catch (ReflectiveOperationException | LinkageError | SecurityException failure) {
+                    report("PROBE feature=" + feature + " SKIP callback=" + failure);
+                }
             }
-            for (int index = 0; index < rule.hooks.length; index++) {
-                String[] spec = rule.hooks[index];
-                Method target = targets.get(index);
-                String id = "installer:" + rule.versionCode + ":" + index;
-                handles.add(hook(target).setId(id).intercept(chain -> {
-                    if (!active) return chain.proceed();
-                    return adapter.dispatch(spec[0], chain);
-                }));
+            // No old hook is removed until all feature probes/callback dependencies are ready.
+            retire(oldHandles);
+            EnumSet<Feature> enabledFeatures = EnumSet.noneOf(Feature.class);
+            for (Feature feature : Feature.values()) {
+                StructuralProbe.Prepared candidate = prepared.get(feature);
+                if (candidate == null || feature == Feature.PERMISSIONS && !enabledFeatures.contains(Feature.FLOW)) continue;
+                Adapter adapter = adapters.get(feature);
+                List<HookHandle> groupHandles = new ArrayList<>();
+                AtomicBoolean enabled = new AtomicBoolean(false);
+                try {
+                    for (int index = 0; index < candidate.group().hooks.length; index++) {
+                        String[] spec = candidate.group().hooks[index];
+                        Method method = candidate.targets().get(index);
+                        String id = "installer:" + feature + ":" + String.join(":", spec);
+                        groupHandles.add(hook(method).setId(id).intercept(chain -> {
+                            if (!enabled.get()) return chain.proceed();
+                            return adapter.dispatch(spec[0], chain);
+                        }));
+                    }
+                    for (Method method : candidate.targets()) deoptimize(method);
+                    for (Executable caller : candidate.callers()) deoptimize(caller);
+                    handles.addAll(groupHandles);
+                    enabled.set(true);
+                    enabledFeatures.add(feature);
+                } catch (Throwable failure) {
+                    for (HookHandle handle : groupHandles) { try { handle.unhook(); } catch (Throwable ignored) { } }
+                    log(Log.ERROR, TAG, BuildInfo.identity() + " feature=" + feature + " ROLLED_BACK", failure);
+                }
             }
-            // Deopt exact callers so existing AOT inlining cannot silently bypass small hooks.
-            for (Method target : targets) deoptimize(target);
-            for (Executable caller : callers) deoptimize(caller);
-            active = true;
-            report("ACTIVE appdetail=" + rule.versionName + " versionCode=" + code + " hooks=" + handles.size());
+            active = !handles.isEmpty();
+            String status = "observedVersion=" + host.version() + " selection=structure features=" + enabledFeatures + " hooks=" + handles.size();
+            if (active) reportActive("ACTIVE " + status); else report("INACTIVE " + status);
         } catch (Throwable failure) {
             active = false;
             for (int i = handles.size() - 1; i >= 0; i--) {
                 try { handles.get(i).unhook(); } catch (Throwable ignored) { }
             }
             handles.clear();
-            log(Log.ERROR, TAG, "DISABLED: preflight/install failed; original behavior retained", failure);
-            Log.e(TAG, "DISABLED: preflight/install failed", failure);
+            log(Log.ERROR, TAG, BuildInfo.identity() + " DISABLED: structural/native preflight failed", failure);
+            Log.e(TAG, BuildInfo.identity() + " DISABLED: structural/native preflight failed", failure);
         }
     }
 
     private static final class Adapter {
         private final ClassLoader loader;
-        private final Constructor<?> guide, state, preload, parsed, fragment;
-        private final Method getConfig, setMode, setPageType, setScanTime, setWarning, setVerify,
+        private Constructor<?> guide, state, preload, parsed, fragment;
+        private Method getConfig, setMode, setPageType, setScanTime, setWarning, setVerify,
                 setNewGuide, setRisks, getCardsLiveData, getMarketLiveData, getDetectLiveData, postValue;
-        private final Object unit, defaultDialog;
-        private final Method scanStart, scanLiveData, setValue, nativeButton, buttonListener,
+        private Field unit, defaultDialog;
+        private Method scanStart, scanLiveData, setValue, nativeButton, buttonListener,
                 bindBottom, findFragment, fragmentActivity, navigate;
-        private final Constructor<?> installButton;
-        private final Object scanReady;
-        private final PermissionPanel permissions;
-        private final PermissionDetails permissionDetails;
+        private Constructor<?> installButton;
+        private Field scanReady;
+        private PermissionPanel permissions;
+        private PermissionDetails permissionDetails;
 
-        Adapter(ClassLoader loader, Profile.Rule rule) throws Exception {
+        Adapter(ClassLoader loader, Profile.Rule rule, Feature feature) throws ReflectiveOperationException {
             this.loader = loader;
+            boolean old = rule.legacy;
+            if (feature == Feature.PERMISSIONS) {
+                permissions = new PermissionPanel(loader, old);
+                permissionDetails = new PermissionDetails(loader, old);
+                return;
+            }
+            if (feature == Feature.RESULT_DIALOGS) {
+                defaultDialog = field("com.oplus.appdetail.model.install.util.ResultPageDialogType", "DEFAULT");
+                return;
+            }
+            if (feature == Feature.RESULT) {
+                String model = "com.oplus.appdetail.model.install.viewmodel.PkgInstallViewModel";
+                getCardsLiveData = method(model, rule.cardsGetter, "androidx.lifecycle.MutableLiveData");
+                getMarketLiveData = method(model, rule.marketGetter, "androidx.lifecycle.MutableLiveData");
+                getDetectLiveData = method(model, rule.detectGetter, "androidx.lifecycle.MutableLiveData");
+                postValue = method("androidx.lifecycle.MutableLiveData", "postValue", "void", "java.lang.Object");
+                unit = field("kotlin.s", "a");
+                return;
+            }
+            if (feature != Feature.FLOW) return;
             String domain = "com.heytap.cdo.security.domain.safeguide.";
-            String resultModel = "com.oplus.appdetail.model.install.viewmodel.PkgInstallViewModel";
             guide = constructor(domain + "GuideResult");
-            state = constructor(rule.state, domain + "GuideResult"); // NoGuide state, not a scan verdict.
+            state = constructor(rule.state, domain + "GuideResult");
             preload = constructor("com.oplus.appdetail.modelv2.parsing.reository.c", rule.stateBase,
                     "com.heytap.cdo.security.domain.expgray.ConfigResult", "java.lang.String");
             parsed = constructor("com.oplus.appdetail.modelv2.parsing.b$j", "boolean");
-            fragment = constructor(rule.fragment); // Original full-page post-scan fragment.
-            boolean old = rule.versionCode == 51762;
-            permissions = new PermissionPanel(loader, old);
-            permissionDetails = new PermissionDetails(loader, old);
+            fragment = constructor(rule.fragment);
             String fetcher = "com.oplus.appdetail.modelv2.guide.helper." + (old ? "h" : "i");
             String bottomData = old ? "ue.c" : "pe.c";
             String presenter = "com.oplus.appdetail.modelv2.guide.presenter.GuideBottomViewPresenter";
@@ -117,9 +212,7 @@ public final class InstallerHook extends XposedModule {
             scanStart = method(rule.fragment, old ? "K" : "L", "void");
             scanLiveData = method("com.oplus.appdetail.modelv2.guide.viewmodel.RiskScanViewModel", "o", "androidx.lifecycle.MutableLiveData");
             setValue = method("androidx.lifecycle.MutableLiveData", "setValue", "void", "java.lang.Object");
-            Field ready = type("com.oplus.appdetail.model.guide.repository.riskScan.k").getDeclaredField("a");
-            ready.setAccessible(true);
-            scanReady = ready.get(null);
+            scanReady = field("com.oplus.appdetail.model.guide.repository.riskScan.k", "a");
             nativeButton = method(presenter, "c", bottomData, "boolean");
             buttonListener = method(bottomData, "b", "android.view.View$OnClickListener");
             installButton = constructor(bottomData + "$b", "java.lang.String", "android.view.View$OnClickListener", "boolean");
@@ -136,16 +229,12 @@ public final class InstallerHook extends XposedModule {
             setWarning = method(domain + "GuideConfig", "setShowWarning", "void", "java.lang.String");
             setVerify = method(domain + "GuideConfig", "setVerifySwitch", "void", "boolean");
             setNewGuide = method(domain + "GuideConfig", "setNewGuideSwitch", "void", "boolean");
-            getCardsLiveData = method(resultModel, rule.cardsGetter, "androidx.lifecycle.MutableLiveData");
-            getMarketLiveData = method(resultModel, rule.marketGetter, "androidx.lifecycle.MutableLiveData");
-            getDetectLiveData = method(resultModel, rule.detectGetter, "androidx.lifecycle.MutableLiveData");
-            postValue = method("androidx.lifecycle.MutableLiveData", "postValue", "void", "java.lang.Object");
-            Field unitField = type("kotlin.s").getDeclaredField("a");
-            unitField.setAccessible(true);
-            unit = unitField.get(null);
-            @SuppressWarnings({"rawtypes", "unchecked"})
-            Object value = Enum.valueOf((Class) type("com.oplus.appdetail.model.install.util.ResultPageDialogType"), "DEFAULT");
-            defaultDialog = value;
+        }
+
+        private Field field(String owner, String name) throws ReflectiveOperationException {
+            Field result = type(owner).getDeclaredField(name);
+            result.setAccessible(true);
+            return result;
         }
 
         Class<?> type(String name) throws ClassNotFoundException {
@@ -164,14 +253,14 @@ public final class InstallerHook extends XposedModule {
             return result;
         }
 
-        Method method(String owner, String name, String result, String... parameters) throws Exception {
+        Method method(String owner, String name, String result, String... parameters) throws ReflectiveOperationException {
             Method method = type(owner).getDeclaredMethod(name, types(parameters));
             if (!method.getReturnType().equals(type(result))) throw new NoSuchMethodException(owner + "#" + name + " return type");
             method.setAccessible(true);
             return method;
         }
 
-        private Constructor<?> constructor(String owner, String... parameters) throws Exception {
+        private Constructor<?> constructor(String owner, String... parameters) throws ReflectiveOperationException {
             Constructor<?> result = type(owner).getDeclaredConstructor(types(parameters));
             result.setAccessible(true);
             return result;
@@ -206,21 +295,26 @@ public final class InstallerHook extends XposedModule {
                 case "STATE": return state.newInstance(localGuide());
                 case "GUIDE": return localGuide();
                 case "NULL": case "NOOP": return null;
-                case "UNIT": return unit;
+                case "UNIT": return unit.get(null);
                 case "FALSE": return false;
-                case "DEFAULT": return defaultDialog;
+                case "DEFAULT": return defaultDialog.get(null);
                 case "NATIVE_SCAN_START":
                     return call(scanStart, chain.getThisObject());
                 case "NATIVE_READY":
-                    call(setValue, call(scanLiveData, chain.getThisObject()), scanReady);
+                    call(setValue, call(scanLiveData, chain.getThisObject()), scanReady.get(null));
                     Log.i(TAG, "UI appdetail-native-ready");
                     return null;
                 case "PERMISSIONS":
                     permissions.bind((ViewGroup) chain.getThisObject(), chain.getArg(1));
                     return null;
                 case "PERMISSION_DETAILS": {
-                    List<Object> rows = permissionDetails.rows((android.app.Activity) chain.getArg(0));
+                    List<Object> rows = permissionDetails.rows(chain.getThisObject(), (android.app.Activity) chain.getArg(0));
                     return rows == null ? chain.proceed() : rows;
+                }
+                case "PERMISSION_HEADER": {
+                    Object result = chain.proceed();
+                    permissionDetails.bindHeader(chain.getThisObject(), chain.getArg(0), (Integer) chain.getArg(1));
+                    return result;
                 }
                 case "NATIVE_BOTTOM": {
                     View bottom = (View) chain.getArg(0);

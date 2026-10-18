@@ -1,0 +1,1 @@
+package android.content; public class Context { public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();} public android.content.res.Resources getResources(){return new android.content.res.Resources();} }

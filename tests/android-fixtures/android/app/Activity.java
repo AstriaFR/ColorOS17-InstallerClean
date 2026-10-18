@@ -1,0 +1,1 @@
+package android.app; public class Activity extends android.content.Context { private final android.content.Intent intent; public Activity(android.content.Intent i){intent=i;} public android.content.Intent getIntent(){return intent;} }

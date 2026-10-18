@@ -22,11 +22,12 @@ final class PermissionPanel {
     private final Method jumpParam, requiredPermissions, apkPath, classify, sensitive,
             background, radius;
 
-    PermissionPanel(ClassLoader loader, boolean old) throws Exception {
+    PermissionPanel(ClassLoader loader, boolean old) throws ReflectiveOperationException {
         String fetcher = "com.oplus.appdetail.modelv2.guide.helper." + (old ? "h" : "i");
         String param = "com.oplus.appdetail.model.guide.repository.ExtJumpParam";
         resultView = Class.forName("com.oplus.appdetail.modelv2.guide.view.GuideScanResultView", false, loader)
                 .getDeclaredConstructor(Context.class);
+        resultView.setAccessible(true);
         details = Class.forName("com.oplus.appdetail.model.permission.ui.PermissionActivity", false, loader);
         jumpParam = method(loader, fetcher, "h");
         requiredPermissions = method(loader, param, "getAppRequirePermissions");
@@ -39,7 +40,7 @@ final class PermissionPanel {
         radius = method(loader, card, "setRadius", int.class);
     }
 
-    private static Method method(ClassLoader loader, String owner, String name, Class<?>... args) throws Exception {
+    private static Method method(ClassLoader loader, String owner, String name, Class<?>... args) throws ReflectiveOperationException {
         Method result = Class.forName(owner, false, loader).getDeclaredMethod(name, args);
         result.setAccessible(true);
         return result;
@@ -103,6 +104,7 @@ final class PermissionPanel {
                 intent.putExtra("local_permission_data", local);
                 intent.putExtra("sensitive_permission_data", snapshot.sensitive());
                 intent.putExtra("normal_permission_data", snapshot.normal());
+                intent.putExtra("custom_permission_data", snapshot.custom());
                 if (!(target instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 target.startActivity(intent);
             });

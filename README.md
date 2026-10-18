@@ -1,104 +1,141 @@
 # ColorOS17安装器净化
 
-适用于 Vector 的应用安装器净化模块，保留 `com.oplus.appdetail` 原生全屏安装界面，精简扫描、广告、更新提醒和重复确认。
+**ColorOS17安装器净化 1.1** 是用于 Vector 的应用安装器模块。它保留 `com.oplus.appdetail` 的原生全屏安装界面、应用信息和权限详情，精简厂商扫描、广告、更新提醒及重复确认，让安装过程集中在查看信息和确认安装上。
 
-- 保留应用信息、权限数量及原生权限详情。
-- 只需一次“安装”确认，完成后显示原生安装结果。
-- 同一模块根据安装器版本自动选择规则，桌面入口隐藏。
+模块使用现代 libxposed API 102，按目标应用的实际代码结构选择可用功能，桌面入口隐藏。
 
-## 本次修复
+## 功能
 
-- 权限摘要与详情使用同一份去重后的权限集合；无法识别或缺少说明的条目保留原始名称，不再漏项。有缺失信息时在原生页面中展示完整的未分类列表。
-- 解析后的32位兼容处理状态原样交还原厂，保留必要的兼容模式启用入口。
+- **原生安装确认**：使用安装器原有的全屏页面、应用信息和“安装”按钮，沿用原厂安装监听、导航和安装服务。
+- **扫描与提示精简**：跳过匹配的厂商风险扫描和验证引导，隐藏扫描失败卡片、重复扫描及相关确认提示。
+- **推荐与提醒处理**：处理广告推荐、商店引导、深度检测推广、安装器自身更新及游戏更新提醒等可选入口。
+- **本地权限展示**：从 APK 本地解析结果读取权限，提供权限数量和原生详情页。
+- **真实安装结果**：完成页显示系统返回的成功或失败结果，保留原厂安装记账和必要的32位兼容处理。
+- **按项自动适配**：各功能分别检查依赖，匹配的功能启用，未匹配或存在歧义的功能保持原厂行为。
 
-本修复版通过22项本地回归检查和两版原厂DEX签名校验，未执行手机安装流程测试。模块显示版本仍为1.0。
+这些功能以对应结构匹配成功为前提。Android 的签名校验、来源授权、安装会话校验和真实安装错误由系统处理；模块不会自动确认安装、授予权限或伪造安装成功。跳过风险扫描后的页面状态也不代表 APK 已通过安全检测。
 
-## 实现原理
+## 权限详情
 
-模块使用 Vector 提供的现代 libxposed API 102，在安装器进程加载后拦截指定 Java 方法，调整页面状态和可选功能的调用。实现分为应用安装器前端和系统安装入口两部分，不需要重签或替换原厂 APK，也不修改 `system_server`。
+权限详情使用安装器原生 `PermissionActivity` 和列表样式，按以下顺序显示：
+
+| 分类 | 归类方式 |
+| --- | --- |
+| 敏感权限 | 原厂标记为敏感，或系统元数据的基础保护级别为 `dangerous` 的权限，优先归入此组 |
+| 普通权限 | 其余由 Android 平台或系统应用定义的权限；这是展示分类，不代表权限已授予或没有风险 |
+| 自定义权限 | 其余由第三方应用定义，或当前系统无法识别的权限 |
+
+空分类自动隐藏，每组独立编号，组内保留 APK 的声明顺序。权限数量和详情使用同一份去重后的权限集合。
+
+能够读取的名称和说明分别保留。缺失名称时显示原始权限名，缺少说明时显示中性说明；信息缺失不会导致条目被丢弃。若无法读取 APK 的权限元数据，权限区域会隐藏，避免将未知状态显示为“0 项权限”。
+
+## 工作原理
+
+模块在目标进程加载后，通过 Vector 注册 Java 方法钩子，调整可选功能和页面状态。作用范围包括应用安装器前端 `com.oplus.appdetail`，以及系统安装入口 `com.android.packageinstaller`。
+
+### 结构探测
+
+`StructuralProbe` 对照内置模板核对类、完整方法参数、返回类型、静态或实例属性、字段类型、构造方法和去优化调用者。探测只读取代码声明，不执行目标方法、调用构造函数或初始化静态单例。
+
+安装器版本号仅用于诊断日志。是否启用功能由实际结构决定，不使用版本白名单。
+
+| 功能组 | 启用条件 |
+| --- | --- |
+| 安装引导、扫描状态与原生安装按钮 | 整套依赖匹配，保证页面和状态能够衔接 |
+| 权限摘要及三类详情 | 安装流程组匹配后，再核对同一模板中的权限页依赖 |
+| 推荐、结果页、结果弹窗、更新提醒、取消提示、完成页提示 | 按功能独立探测、注册和回滚 |
+
+完全相同的模板只启用一次。若一个候选完整包含另一个候选的相同规则并提供额外接口，会选择该兼容超集；若多个候选互不包含，视为歧义并跳过。缺失依赖或注册失败只影响对应功能组，其他独立匹配的功能可以继续使用。
+
+### 安装流程
+
+安装流程组匹配时，模块使用本地精简引导配置，衔接原生确认页和安装服务。APK 的暂存、解析及真正的安装会话仍由原厂处理。
 
 ```mermaid
 flowchart TD
-    A[从文件管理等来源打开 APK] --> B[系统 InstallStart 处理来源和安装入口]
-    B --> C[com.oplus.appdetail 本地解析 APK]
+    A[从文件管理等来源打开 APK] --> B[Vector 加载模块并探测可用功能]
+    B --> C[原厂入口与 APK 本地解析]
     C --> D[原生应用信息、权限详情和安装按钮]
-    D --> E[用户点击一次安装]
-    E --> F[原生 InstallFinishActivity]
-    F --> G[原厂安装服务提交真实安装会话]
-    G --> H[原生安装成功或失败结果]
+    D --> E[用户确认安装]
+    E --> F[原厂安装服务提交会话]
+    F --> G[显示真实安装结果]
 ```
 
-### 1. 按安装器版本选择规则
+`InstallerHook` 调整预加载引导、扫描状态、原生按钮和可选推荐入口。安装按钮沿用原厂监听和导航，完成页保留安装状态处理。
 
-`Compatibility` 读取目标应用的版本码，`Profile.select()` 为 51762 和 52302 选择各自的类名、方法签名及回调依赖。两版存在混淆名称和参数差异，因此不能直接套用同一组方法名。
+`NativeRouter` 核对底层入口结构，仅在安装分支且原返回值为已知的功能开关回退状态时，检查前端 APK 的完整安装流程模板。唯一匹配后才调整入口状态；其他返回值、前端不匹配及卸载分支保持原语义。探测结果按 APK 路径和文件更新时间缓存，APK 变化时重新检查。
 
-前端在启用拦截前会解析并核对所需类、方法参数和返回类型；准备失败时，撤销已经注册的前端钩子，保留原行为。对目标方法和指定调用者执行去优化，避免已编译代码中的方法内联绕过钩子。`profile.json` 是规则来源，`verify_profile.py` 可对照本地原厂 APK 的 DEX 校验并生成 `Profile.java`。
+模块对目标方法和指定调用者执行去优化，减少已编译代码中的方法内联绕过钩子的情况。整个实现通过进程内钩子工作，不重签或替换原厂 APK，也不修改 `system_server`。
 
-### 2. 跳过厂商扫描与失败提示
+### 模块重载
 
-`InstallerHook` 在预加载及引导配置入口提供本地的精简 `GuideResult`，关闭可选验证、扫描计时和提示配置，减少对远端引导结果的依赖。APK 的实际暂存、解析仍由原厂流程处理。解析后的分流先执行原厂方法；32位兼容相关状态原样保留，其他可选引导结果再进入精简流程。
+模块支持 API 102 自动重载回调。旧代码仅传递目标包名、原厂 ClassLoader 和用于诊断的安装器版本；新代码重新探测依赖、卸载旧钩子并注册可用功能。日志包含实际加载代码的内部版本码和构建标识，可以区分安装文件与进程中的代码。
 
-在 `RiskScanViewModel` 的扫描启动位置，模块不执行原扫描任务，而是向原生界面的状态观察者写入可继续渲染的完成态。随后将扫描内容区替换为权限摘要，并阻止无扫描失败卡片、重复提示及完成页附带提示的生成或显示。这个完成态用于页面流转，**不代表 APK 已通过安全检测**。
+自动重载需要 Vector 接收到包更新并刷新缓存。若覆盖安装后仍显示旧效果，在 Vector 中关闭再开启本模块，然后结束并重新打开两个安装器进程。
 
-### 3. 保留原生页面，只确认一次
+## 适配与验证范围
 
-安装确认使用原厂 `EnhanceGuardFragment`、`HeaderAppInfoView` 和 `GuideBottomView`。模块将底部数据收敛为一个“安装”按钮，沿用原厂安装点击监听和导航；同时拦截扫描前按钮的延迟刷新，避免页面又变回“继续安装／取消安装”。
+项目面向 ColorOS 17 安装器环境，内置两套结构模板。模板来源版本是参考样本，不是运行白名单。
 
-用户点击后，模块跳过可选的风险对话框，衔接原厂导航和已有安装任务，进入 `InstallFinishActivity`。实际安装由原厂安装服务提交会话，完成页显示系统返回的真实结果。
-
-`NativeRouter` 处理底层 `com.android.packageinstaller` 的解耦入口：仅在支持的安装器版本和安装分支中，将功能开关导致的回退状态 1、11 调整为原生入口状态 0，使前端能接管完整流程，避免返回另一套扫描及确认页面。其他返回状态和卸载分支保持原语义。
-
-### 4. 本地权限展示
-
-`PermissionPanel` 优先读取原厂解析结果中的 `ExtJumpParam.getAppRequirePermissions()`；缺少该字段时，通过 `PackageManager.getPackageArchiveInfo(..., GET_PERMISSIONS)` 从 APK 本地读取权限元数据。若无法读取，则隐藏权限区域，避免把未知数据显示为“0 项权限”。
-
-模块调用对应版本的原厂权限分类工具，并以同一份去重后的本地权限集合生成数量和详情。点击后进入原厂 `PermissionActivity`，由模块生成完整的原生列表条目，避免原厂适配器过滤无法解析的权限。信息齐全时保留敏感权限、常规权限分组；有无法识别或缺少说明的条目时，显示未分类的完整列表，使用原始权限名称和中性说明兜底。这个过程不启动风险扫描，也不申请或授予权限。
-
-### 5. 广告、更新与正常安装的边界
-
-模块在 `RecommendManager`、推荐展示和更新提醒入口中断可选调用，在结果页清空推荐内容、关闭商店引导和深度检测推广。处理结果页时仍保留原有状态记账；5.17 的卡片观察值是单个 `CardDto`，5.23 是 `List<CardDto>`，两版均使用其支持的 `null` 清空，避免类型转换错误。
-
-厂商风险扫描及对应提示会被跳过。Android 系统签名校验、来源授权、安装会话校验和真实安装错误仍由系统处理；模块不会自动点击安装、伪造安装成功，也不能解决新旧 APK 签名不一致导致的升级失败。
-
-| 源码 | 职责 |
+| 参考样本 | 验证范围 |
 | --- | --- |
-| [InstallerHook.java](src/java/cn/lzy/gt7p/installerclean/InstallerHook.java) | 前端钩子、扫描状态、原生按钮、推荐和提示处理 |
-| [NativeRouter.java](src/java/cn/lzy/gt7p/installerclean/NativeRouter.java) | 底层原生安装入口衔接 |
-| [PermissionPanel.java](src/java/cn/lzy/gt7p/installerclean/PermissionPanel.java) | 本地权限摘要及原生详情页 |
-| [PermissionCatalog.java](src/java/cn/lzy/gt7p/installerclean/PermissionCatalog.java) | 统一权限集合、完整性和缺失信息兜底 |
-| [PermissionDetails.java](src/java/cn/lzy/gt7p/installerclean/PermissionDetails.java) | 在原生详情适配器中保留全部权限 |
-| [ParsingPolicy.java](src/java/cn/lzy/gt7p/installerclean/ParsingPolicy.java) | 保留原厂32位兼容处理结果 |
-| [profile.json](profile.json) | 两版安装器的目标方法和依赖规则 |
+| `com.oplus.appdetail` 5.17.62_os17（51762） | DEX 结构矩阵和手机只读反射均匹配33个钩子；当前设备已验证功能组启用和三类权限详情 |
+| `com.oplus.appdetail` 5.23.0（52302） | DEX 结构矩阵和手机隔离 ClassLoader 只读反射均匹配33个钩子；未安装此样本验证完整流程 |
+| `com.android.packageinstaller` 17.0.1（17000001） | 入口结构与当前设备的钩子启用已验证 |
+| 其他安装器版本 | 按功能探测实际结构，未匹配的功能保持原厂行为 |
 
-## 支持版本
+结构相同的其他版本可以沿用模板；混淆类名、方法语义或页面流程大幅变化时，需要补充模板。结构匹配通过只表示具备挂载条件，不能替代完整安装流程验证。
 
-| 应用安装器 | 验证情况 |
+本地回归检查包含76项断言，覆盖权限完整性与分类、解析兼容状态、重载状态交接、签名不符、依赖缺失、模板歧义和路由分支。验证范围不包含当前构建的实际应用安装流程，也不包含未知版本的完整行为验证。
+
+## 安装与使用
+
+1. 安装模块 APK，可使用本地构建产物或[项目发布页](https://github.com/AstriaFR/ColorOS17-InstallerClean/releases)提供的安装包。
+2. 在 Vector 中启用 **ColorOS17安装器净化**。
+3. 作用域选择 `com.oplus.appdetail` 和 `com.android.packageinstaller`。
+4. 结束安装器进程后，重新打开需要安装的 APK。
+
+模块版本为 **1.1**，包名为 `cn.lzy.gt7p.installerclean`，没有桌面入口。启用状态和作用域在 Vector 中管理。
+
+### 本地更新
+
+仓库提供 [install-local.ps1](install-local.ps1)，用于通过 ADB 覆盖安装和刷新 Vector 缓存。脚本要求设备已授权 USB 调试、可使用 `su`，且本模块已在 Vector 中启用并配置作用域。
+
+```powershell
+./install-local.ps1 -Apk ./ColorOS17-InstallerClean-v1.1.apk -Adb /path/to/adb -ExpectedVersionCode 120
+```
+
+脚本仅重新启用本模块以刷新缓存，再结束两个安装器进程；同时核对安装包哈希、版本码、模块状态和原有作用域。它不执行应用安装流程，也不重启手机。
+
+## 源码与构建
+
+| 文件 | 职责 |
 | --- | --- |
-| 5.17.62_os17（51762） | 前版已实机验证；本修复版未做安装流程测试 |
-| 5.23.0（52302） | 静态检查通过；未完成实机安装验证 |
+| `InstallerHook.java`、`NativeRouter.java` | 前端功能钩子与底层安装入口 |
+| `StructuralProbe.java`、`Feature.java`、`profile.json` | 结构匹配、功能分组与模板定义 |
+| `PermissionPanel.java`、`PermissionCatalog.java`、`PermissionDetails.java` | 本地权限数据、分类与原生详情页 |
+| `ParsingPolicy.java`、`RoutingPolicy.java` | 解析兼容状态和安装入口分支策略 |
+| `ReloadState.java`、`BuildInfo.java` | 重载状态交接与实际代码版本标识 |
+| `verify_profile.py`、`profile_generator.py` | 原厂 DEX 校验、模板生成和结构匹配矩阵 |
 
-底层安装器适配版本：`com.android.packageinstaller` 17.0.1（17000001）。其他版本保留原行为。
-
-## 使用
-
-1. [下载并安装模块 APK](https://github.com/AstriaFR/ColorOS17-InstallerClean/releases/latest/download/ColorOS17-InstallerClean-v1.0.apk)。
-2. 在 Vector 中启用模块，作用域选择 `com.oplus.appdetail` 和 `com.android.packageinstaller`。
-3. 重新启动安装器；若未生效，可重启手机。
-
-模块名称为 **ColorOS17安装器净化**，显示版本 **1.0**。权限信息来自 APK 本地解析，模块不会自动授予权限；系统签名检查及真实安装错误仍由系统处理。
-
-## 构建
-
-需要 JDK 17+、Android SDK Platform / Build Tools 37.0.0，以及 libxposed API 102.0.0 AAR。
+构建需要 JDK 17+、Android SDK Platform 37、Build Tools 37.0.0，以及 libxposed API 102.0.0 AAR。
 
 ```powershell
 ./build.ps1 -Sdk /path/to/android-sdk -Jdk /path/to/jdk -LibXposedAar /path/to/api-102.0.0.aar
 ```
 
-默认生成未签名 APK；签名参数见脚本。`profile.json` 保存版本规则，生成的 `Profile.java` 已包含在源码中。可选的 `verify_profile.py` 用于核对本地原厂 APK 并重新生成规则，需要 `requirements.txt` 中的依赖。原厂 APK 和签名私钥不随仓库分发。
+默认生成 `build/apk/ColorOS17-InstallerClean-v1.1-unsigned.apk`。指定签名参数后生成 `ColorOS17-InstallerClean-v1.1.apk`，签名参数见构建脚本。生成的 `Profile.java` 已包含在源码中，普通构建无需原厂 APK。
 
-本地回归检查（不连接手机）：
+对照本地原厂 APK 校验或重新生成模板时，需要按 `profile.json` 放置参考文件，并安装 `requirements.txt` 中的依赖，然后运行：
+
+```powershell
+python ./verify_profile.py
+```
+
+本地回归检查不连接手机：
 
 ```powershell
 ./tests/run-local.ps1 -Jdk /path/to/jdk
 ```
+
+原厂 APK、签名私钥及设备日志不随源码分发。

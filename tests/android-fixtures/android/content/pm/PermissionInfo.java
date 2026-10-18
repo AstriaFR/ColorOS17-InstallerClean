@@ -1,0 +1,1 @@
+package android.content.pm; public class PermissionInfo { public static final int PROTECTION_MASK_BASE=15,PROTECTION_DANGEROUS=1; public String packageName="android",name;public int protectionLevel; public CharSequence loadLabel(PackageManager p){return name;}public CharSequence loadDescription(PackageManager p){return "Description";} }

@@ -1,0 +1,1 @@
+package android.widget; public class ImageView {public void setImageResource(int id){}}

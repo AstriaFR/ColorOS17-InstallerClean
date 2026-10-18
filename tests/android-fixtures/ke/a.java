@@ -1,0 +1,1 @@
+package ke;public class a {private android.app.Activity a;public a(android.app.Activity activity){a=activity;}public static class b {public android.widget.ImageView a=new android.widget.ImageView();public android.widget.TextView b=new android.widget.TextView();}}

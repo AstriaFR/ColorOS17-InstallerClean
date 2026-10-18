@@ -1,0 +1,1 @@
+package le;public class b {public final int type;private b(int i){type=i;}}
