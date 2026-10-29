@@ -1,0 +1,1 @@
+package com.heytap.cdo.card.domain.dto.installer; import com.heytap.cdo.installer.InstallerResultDto; public class InstallerResultCardDto extends com.heytap.cdo.card.domain.dto.CardDto { public InstallerResultDto first,second,third; public void setFirst(InstallerResultDto b){first=b;} public void setSecond(InstallerResultDto b){second=b;} }

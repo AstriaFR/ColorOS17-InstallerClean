@@ -124,7 +124,7 @@ def main(root, generated_relative='src/java/cn/lzy/gt7p/installerclean', report_
     matrix = []
     for sample, sample_methods, sample_fields, sample_parents in samples:
         selected, rejected = {}, []
-        for feature in ['FLOW', 'PERMISSIONS', 'RECOMMENDATIONS', 'RESULT', 'RESULT_DIALOGS', 'UPDATE_REMINDERS', 'CANCEL_PROMPTS', 'FINISH_NOTE']:
+        for feature in ['FLOW', 'PERMISSIONS', 'RECOMMENDATIONS', 'RESULT', 'RESULT_DIALOGS', 'UPDATE_REMINDERS', 'CANCEL_PROMPTS', 'FINISH_NOTE', 'FINISH_OPEN']:
             matches = []
             for group in compiled:
                 if group['feature'] != feature: continue

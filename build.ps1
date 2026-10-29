@@ -36,12 +36,12 @@ Run "$Jdk/bin/javac.exe" (@('-encoding','UTF-8','-source','17','-target','17','-
 $classes = @((Get-ChildItem "$out/classes" -Recurse -Filter '*.class').FullName)
 Run "$Jdk/bin/java.exe" (@('-cp',"$bt/lib/d8.jar",'com.android.tools.r8.D8','--lib',$platform,'--classpath',"$out/api/classes.jar",'--min-api','26','--output',"$out/dex") + $classes)
 Run "$Jdk/bin/jar.exe" @('uf',"$out/unsigned.apk",'-C',"$out/dex",'classes.dex','-C',"$src/resources",'META-INF')
-$apk = Join-Path $out 'ColorOS17-InstallerClean-v1.1-unsigned.apk'
+$apk = Join-Path $out 'ColorOS17-InstallerClean-v1.1.1-unsigned.apk'
 Run "$bt/zipalign.exe" @('-f','-p','4',"$out/unsigned.apk",$apk)
 if ($KeyStore) {
     # Passwords are supplied through environment variables and never stored in source.
     if (!$env:INSTALLERCLEAN_KEYSTORE_PASSWORD) { throw 'Set INSTALLERCLEAN_KEYSTORE_PASSWORD for signing.' }
-    $signed = Join-Path $out 'ColorOS17-InstallerClean-v1.1.apk'
+    $signed = Join-Path $out 'ColorOS17-InstallerClean-v1.1.1.apk'
     $signArgs = @('-jar',"$bt/lib/apksigner.jar",'sign','--ks',$KeyStore,'--ks-key-alias',$KeyAlias,'--ks-pass','env:INSTALLERCLEAN_KEYSTORE_PASSWORD')
     if ($env:INSTALLERCLEAN_KEY_PASSWORD) { $signArgs += @('--key-pass','env:INSTALLERCLEAN_KEY_PASSWORD') }
     Run "$Jdk/bin/java.exe" ($signArgs + @('--out',$signed,$apk))

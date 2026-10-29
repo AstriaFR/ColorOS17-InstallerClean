@@ -175,10 +175,15 @@ public final class InstallerHook extends XposedModule {
         private Field scanReady;
         private PermissionPanel permissions;
         private PermissionDetails permissionDetails;
+        private FinishButtons finishButtons;
 
         Adapter(ClassLoader loader, Profile.Rule rule, Feature feature) throws ReflectiveOperationException {
             this.loader = loader;
             boolean old = rule.legacy;
+            if (feature == Feature.FINISH_OPEN) {
+                finishButtons = new FinishButtons(loader, old);
+                return;
+            }
             if (feature == Feature.PERMISSIONS) {
                 permissions = new PermissionPanel(loader, old);
                 permissionDetails = new PermissionDetails(loader, old);
@@ -340,6 +345,14 @@ public final class InstallerHook extends XposedModule {
                     View note = panel.findViewById(id);
                     if (note != null) note.setVisibility(View.GONE);
                     return result;
+                }
+                case "FINISH_OPEN": {
+                    Object original = chain.proceed();
+                    try { return finishButtons.restore(chain.getThisObject(), original); }
+                    catch (ReflectiveOperationException failure) {
+                        Log.w(TAG, "Native finish actions unavailable", failure);
+                        return original;
+                    }
                 }
                 case "HIDE_SCAN_NOTE": {
                     ((View) chain.getThisObject()).setVisibility(View.GONE);

@@ -1,0 +1,1 @@
+package com.oplus.appdetail.model.install.viewmodel; public class PkgInstallViewModel { public final androidx.lifecycle.MutableLiveData state=new androidx.lifecycle.MutableLiveData(); public androidx.lifecycle.MutableLiveData B(){return state;} public androidx.lifecycle.MutableLiveData C(){return state;} }
